@@ -349,10 +349,10 @@ impl VpnPlugin {
 
         debug_log!("Server: {} Port: {}", server.ToString()?.to_string(), port);
 
-        // We "block" here with the call to `.get()` but given this is a UDP socket
+        // We "block" here with the call to `.join()` but given this is a UDP socket
         // connect isn't actually something that will hang (DNS aside perhaps?).
         sock.ConnectAsync(&server, &HSTRING::from(port.to_string()))?
-            .get()?;
+            .join()?;
 
         // Kick off the VPN setup
         channel.Start(

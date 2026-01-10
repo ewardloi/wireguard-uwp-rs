@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use windows::{
-    core::{implement, AsImpl, Error, Interface, Ref, Result, RuntimeType, Type},
+    core::{implement, AsImpl, Error, Interface, Ref, Result, RuntimeType, Type, IUnknownImpl},
     Networking::Vpn::VpnPacketBuffer,
     Win32::Foundation::{E_BOUNDS, E_NOTIMPL},
     Win32::System::WinRT::IBufferByteAccess,
@@ -43,7 +43,7 @@ where
     }
 
     fn GetView(&self) -> Result<IVectorView<T>> {
-        Ok(unsafe { self.cast() }?)
+        Ok(self.to_interface::<IVectorView<T>>())
     }
 
     fn IndexOf(&self, value: Ref<'_, T>, index: &mut u32) -> Result<bool> {
@@ -148,7 +148,7 @@ where
 {
     fn First(&self) -> Result<IIterator<T>> {
         Ok(VectorIterator::<T> {
-            it: unsafe { self.cast() }?,
+            it: self.to_interface::<IIterable<T>>(),
             curr: AtomicU32::new(0),
         }
         .into())
