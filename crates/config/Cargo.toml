@@ -1,0 +1,16 @@
+[package]
+name = "wireguard-config"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Platform-independent WireGuard profile model shared by the plugin and the app."
+
+[dependencies]
+base64 = "0.22.1"
+ipnetwork = { version = "0.21.1", features = ["serde"] }
+quick-xml = { version = "0.38", features = ["serialize", "overlapped-lists"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+# Used only to prove that a parsed profile really drives a working tunnel.
+boringtun = "0.7.1"

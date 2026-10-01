@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use windows::{
-    core::{implement, AsImpl, Error, Interface, Ref, Result, RuntimeType, Type, IUnknownImpl},
+    core::{implement, AsImpl, Error, IUnknownImpl, Interface, Ref, Result, RuntimeType, Type},
     Networking::Vpn::VpnPacketBuffer,
     Win32::Foundation::{E_BOUNDS, E_NOTIMPL},
     Win32::System::WinRT::IBufferByteAccess,
@@ -31,15 +31,11 @@ where
     <T as Type<T>>::Default: PartialEq + Clone,
 {
     fn GetAt(&self, index: u32) -> Result<T> {
-        self.0
-            .get(index as usize)
-            .map(|el| T::from_default(el))
-            .transpose()?
-            .ok_or(Error::from(E_BOUNDS))
+        self.get_at(index)
     }
 
     fn Size(&self) -> Result<u32> {
-        u32::try_from(self.0.len()).map_err(|_| Error::from(E_BOUNDS))
+        self.size()
     }
 
     fn GetView(&self) -> Result<IVectorView<T>> {
@@ -47,14 +43,10 @@ where
     }
 
     fn IndexOf(&self, value: Ref<'_, T>, index: &mut u32) -> Result<bool> {
-        if let Some(idx) = self.0.iter().position(|el| *el == *value) {
-            *index = u32::try_from(idx).map_err(|_| Error::from(E_BOUNDS))?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        self.index_of(&value, index)
     }
 
+    // The collection is immutable once created.
     fn SetAt(&self, _index: u32, _value: Ref<'_, T>) -> Result<()> {
         Err(E_NOTIMPL.into())
     }
@@ -80,18 +72,7 @@ where
     }
 
     fn GetMany(&self, start: u32, items: &mut [T::Default]) -> Result<u32> {
-        let sz = u32::try_from(self.0.len()).map_err(|_| Error::from(E_BOUNDS))?;
-
-        if start >= sz {
-            return Err(Error::from(E_BOUNDS));
-        }
-
-        let mut count = 0;
-        for (item, el) in items.into_iter().zip(self.0[start as usize..].iter()) {
-            *item = el.clone();
-            count += 1;
-        }
-        Ok(count)
+        self.get_many(start, items)
     }
 
     fn ReplaceAll(&self, _values: &[T::Default]) -> Result<()> {
@@ -105,39 +86,19 @@ where
     <T as Type<T>>::Default: PartialEq + Clone,
 {
     fn GetAt(&self, index: u32) -> Result<T> {
-        self.0
-            .get(index as usize)
-            .map(|el| T::from_default(el))
-            .transpose()?
-            .ok_or(Error::from(E_BOUNDS))
+        self.get_at(index)
     }
 
     fn Size(&self) -> Result<u32> {
-        u32::try_from(self.0.len()).map_err(|_| Error::from(E_BOUNDS))
+        self.size()
     }
 
     fn IndexOf(&self, value: Ref<T>, index: &mut u32) -> Result<bool> {
-        if let Some(idx) = self.0.iter().position(|el| *el == *value) {
-            *index = u32::try_from(idx).map_err(|_| Error::from(E_BOUNDS))?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        self.index_of(&value, index)
     }
 
     fn GetMany(&self, start: u32, items: &mut [T::Default]) -> Result<u32> {
-        let sz = u32::try_from(self.0.len()).map_err(|_| Error::from(E_BOUNDS))?;
-
-        if start >= sz {
-            return Err(Error::from(E_BOUNDS));
-        }
-
-        let mut count = 0;
-        for (item, el) in items.into_iter().zip(self.0[start as usize..].iter()) {
-            *item = el.clone();
-            count += 1;
-        }
-        Ok(count)
+        self.get_many(start, items)
     }
 }
 
@@ -162,6 +123,46 @@ where
 {
     pub fn new(v: Vec<T::Default>) -> IVector<T> {
         Vector(v).into()
+    }
+}
+
+impl<T> Vector<T>
+where
+    T: RuntimeType + 'static,
+    <T as Type<T>>::Default: PartialEq + Clone,
+{
+    fn get_at(&self, index: u32) -> Result<T> {
+        self.0
+            .get(index as usize)
+            .map(|el| T::from_default(el))
+            .transpose()?
+            .ok_or(Error::from(E_BOUNDS))
+    }
+
+    fn size(&self) -> Result<u32> {
+        u32::try_from(self.0.len()).map_err(|_| Error::from(E_BOUNDS))
+    }
+
+    fn index_of(&self, value: &T::Default, index: &mut u32) -> Result<bool> {
+        match self.0.iter().position(|el| el == value) {
+            Some(idx) => {
+                *index = u32::try_from(idx).map_err(|_| Error::from(E_BOUNDS))?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn get_many(&self, start: u32, items: &mut [T::Default]) -> Result<u32> {
+        let tail = self.0.get(start as usize..).filter(|t| !t.is_empty());
+        let tail = tail.ok_or(Error::from(E_BOUNDS))?;
+
+        let mut count = 0;
+        for (item, el) in items.iter_mut().zip(tail) {
+            *item = el.clone();
+            count += 1;
+        }
+        Ok(count)
     }
 }
 
@@ -237,23 +238,17 @@ impl IBufferExt for VpnPacketBuffer {
     }
 }
 
+/// `format!`-style logging to the debugger via `OutputDebugStringA`.
 macro_rules! debug_log {
-    ($fmt:tt) => {
+    ($($arg:tt)*) => {{
+        let msg = format!("{}\n\0", format_args!($($arg)*));
+        // SAFETY: `msg` is NUL terminated and outlives the call.
         unsafe {
-            use ::windows::core::PCSTR;
-            use ::windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
-            let mut msg = format!(concat!($fmt, "\n\0"));
-            OutputDebugStringA(PCSTR(msg.as_mut_ptr()));
+            ::windows::Win32::System::Diagnostics::Debug::OutputDebugStringA(
+                ::windows::core::PCSTR(msg.as_ptr()),
+            );
         }
-    };
-    ($fmt:tt, $($arg:tt)*) => {
-        unsafe {
-            use ::windows::core::PCSTR;
-            use ::windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
-            let mut msg = format!(concat!($fmt, "\n\0"), $($arg)*);
-            OutputDebugStringA(PCSTR(msg.as_mut_ptr()));
-        }
-    };
+    }};
 }
 
 pub(crate) use debug_log;

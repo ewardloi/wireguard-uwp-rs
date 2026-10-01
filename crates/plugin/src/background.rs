@@ -24,7 +24,6 @@ impl IBackgroundTask_Impl for VpnBackgroundTask_Impl {
         let task = task.as_ref().ok_or(Error::from(E_UNEXPECTED))?;
         let deferral = task.GetDeferral()?;
 
-        // Grab existing plugin instance from in-memory app properties or create a new one
         let app_props = CoreApplication::Properties()?;
         let plugin = if app_props.HasKey(&HSTRING::from("plugin"))? {
             app_props.Lookup(&HSTRING::from("plugin"))?.cast()?
@@ -34,7 +33,6 @@ impl IBackgroundTask_Impl for VpnBackgroundTask_Impl {
             plugin
         };
 
-        // Call into VPN platform with the plugin object
         VpnChannel::ProcessEventAsync(&plugin, &task.TriggerDetails()?)?;
 
         deferral.Complete()?;
@@ -82,7 +80,6 @@ pub unsafe extern "system" fn DllGetActivationFactory(
         return E_INVALIDARG;
     }
 
-    // Return the appropriate factory based on which class was requested
     if *activatable_class_id == "WireGuard.VpnBackgroundTask" {
         *factory = Some(VpnBackgroundTaskFactory.into());
     } else {

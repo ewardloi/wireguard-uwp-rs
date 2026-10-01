@@ -6,6 +6,7 @@ license = "MIT OR Apache-2.0"
 description = "Foreground App for managing WireGuard VPN profiles."
 
 [dependencies]
+wireguard-config = { path = "../config" }
 
 [dependencies.windows]
 version = "0.28"
@@ -13,11 +14,17 @@ features = [
     "alloc",
     "build",
     "std",
+    "ApplicationModel",
     "ApplicationModel_Activation",
+    "ApplicationModel_DataTransfer",
+    "Foundation",
     "Foundation_Collections",
+    "Networking_Vpn",
+    "Storage",
+    "Storage_Pickers",
     "UI_Xaml_Controls",
-    "UI_Xaml_Documents",
-    "UI_Xaml_Media",
+    "UI_Xaml_Controls_Primitives",
+    "UI_Core",
     "UI_Xaml",
     "Win32_System_Com",
 ]

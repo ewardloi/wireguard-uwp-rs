@@ -17,8 +17,6 @@ pub trait WireGuardEvents {
     #[event(level = "warn")]
     fn disconnect(code: u32, msg: &str);
 
-    // Noisy packet encap/decap events
-
     /// Packet encap begin event.
     /// Indicates how many outgoing packets are ready to be encapsulated.
     #[event(level = "verbose")]

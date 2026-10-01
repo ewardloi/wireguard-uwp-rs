@@ -38,7 +38,34 @@ after installation. This is just a stop-gap until a proper `.appx` can be genera
 
 ## Running
 
-To get your VPN tunnel up and running:
+There are two ways to create and edit a profile: the built-in app (recommended) or PowerShell.
+
+### Using the app
+
+Profiles are created in Windows itself and edited in the app:
+
+1. Open Windows Settings, `Network & Internet > VPN`, `Add a VPN connection`.
+2. Choose **WireGuard VPN** as the `VPN provider`, give it a `Connection name`, enter the
+   `Server name or address` and hit `Save`.
+3. Start **WireGuard VPN** from the Start menu (press **Refresh** if it was already open),
+   pick the profile and fill in the fields: server port, your private key and address, the
+   server's public key and the allowed IPs. DNS, search domains, MTU, excluded IPs, persistent
+    keepalive and the **preshared key** are optional.
+4. Press **Copy PowerShell** and paste the command into PowerShell to apply the profile.
+5. Connect from the Windows VPN settings.
+
+Already have a standard WireGuard `.conf` file? Press **Load .conf** next to
+**Refresh** and choose the file. The fields get filled in so you can review
+them before copying the PowerShell command. `ListenPort`, `PostUp` and other options that don't
+apply to a Windows VPN plugin are ignored, and only a single `[Peer]` is
+supported.
+
+The profile name can't be changed (Windows identifies profiles by name). **Delete** removes
+the profile from Windows.
+
+Updating a profile that is currently connected is not possible, so disconnect first.
+
+### Using PowerShell
 
 1. Open Windows Settings and navigate to the VPN page:
 `Network & Internet > VPN`.
@@ -49,8 +76,8 @@ To get your VPN tunnel up and running:
 6. Hit `Save`.
 
 The settings you can tweak from the Windows Settings UI are limited to just the profile name
-and remote endpoint's hostname. To modify the private key, public key, remote port etc we must
-set those values manually. From a powershell prompt:
+and remote endpoint's hostname. To modify the private key, public key, remote port etc set
+those values from a powershell prompt:
 
 ```powershell
 $vpnConfig = @'
@@ -62,9 +89,11 @@ $vpnConfig = @'
         <DNS>1.1.1.1</DNS>
         <DNSSearch>vpn.example.com</DNSSearch>
         <DNSSearch>foo.corp.example.com</DNSSearch>
+        <MTU>1420</MTU>
     </Interface>
     <Peer>
         <PublicKey>...</PublicKey>
+        <PresharedKey>...</PresharedKey>
         <Port>51000</Port>
         <AllowedIPs>10.0.0.0/24</AllowedIPs>
         <AllowedIPs>10.10.0.0/24</AllowedIPs>
@@ -78,9 +107,9 @@ $vpnConfig = @'
 Set-VpnConnection -Name ProfileNameHere -CustomConfiguration $vpnConfig
 ```
 
-The only required values are `PrivateKey`, `Address`, `PublicKey`, & `Port`. The rest are optional.
-You may repeat `Address` multiple times to assign multiple IPv4 & IPv6 addresses to the virtual
-interface. Similarly, you may specify `AllowedIPs` multiple times to define the routes that
+The only required values are `PrivateKey`, `Address`, `PublicKey`, `Port` & `AllowedIPs`. The rest are
+optional. You may repeat `Address` multiple times to assign multiple IPv4 & IPv6 addresses to the
+virtual interface. Similarly, you may specify `AllowedIPs` multiple times to define the routes that
 should go over the virtual interface.
 
 You should now be able to select the new profile and hit `Connect`.
@@ -98,15 +127,26 @@ interval in which it will be called cannot be controlled by the plugin author or
 the user but rather the platform itself. Hence it's important to make sure the
 server will keep the tunnel alive by sending the periodic keep alives in-band.
 
-**NOTE:** The main foreground app is planned to offer a simple UI for setting and modifying these
-values.
-
 This has only been tested on Windows 10 21H1 (19043.1348) but should work on any updated
 Windows 10 or 11 release. It'll probably work on older versions but no guarantees.
 
 ### Address
 
 You must specify one or more IPv4 and/or IPv6 addresses to assign to the virtual interface.
+
+### MTU
+
+`MTU` (optional, in `Interface`) sets the MTU of the tunnel interface. It defaults to `1500` and
+must be between `576` and `1500`: the plugin's packet buffers are 1500 bytes, so larger values
+can't work. If large transfers stall or only small packets get through, lower it; `1420` is the
+usual value for WireGuard over IPv6-capable links, `1380` leaves more headroom.
+
+### Preshared key
+
+`PresharedKey` (optional) is the base64 key generated with `wg genpsk`. It adds a layer of
+symmetric encryption on top of the Curve25519 handshake and must be identical on both sides;
+if only one side has it, or the keys differ, the handshake is rejected and the tunnel never
+comes up. Leave it empty or omit the element to run without one.
 
 ### DNS
 
@@ -199,6 +239,16 @@ To print the routing table in `cmd.exe` run:
 ```cmd
 route print
 ```
+
+## Development
+
+The workspace has three crates:
+
+* `crates/config`: the profile model (XML storage format, `wg-quick` import, form
+  validation). It has no Windows dependencies, so its unit tests, including an
+  end-to-end handshake test through `boringtun`, run on any OS: `cargo test -p wireguard-config`.
+* `crates/plugin`: the `IVpnPlugIn` background task (`wireguard_plugin.dll`).
+* `crates/app`: the XAML profile editor.
 
 ## Tracing
 
